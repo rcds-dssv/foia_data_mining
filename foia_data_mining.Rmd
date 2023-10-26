@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Load libraries
+## Load Libraries
 ```{r}
 library(XML)
 library(xml2)
