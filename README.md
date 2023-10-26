@@ -2,8 +2,8 @@
 A repository for R code that mines XML data downloaded from [foia.gov](https://www.foia.gov/)
 
 ## Overview
-This code will extract data stored in XML format as provided by the Freedom of Information Act
-(FOIA) website. You can specify your agency (e.g., Dept. of Labor) and the subcomponents of 
+This code will extract data stored in XML format as provided by the [Freedom of Information Act
+(FOIA) website](https://www.foia.gov/). You can specify your agency (e.g., Dept. of Labor) and the subcomponents of 
 interest (e.g., Occupational Safety and Health Administration). You can also specify your 
 relevant FOIA reporting metrics (e.g., Response Time, Backlog, etc.). 
 
