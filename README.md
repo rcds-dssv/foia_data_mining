@@ -1,5 +1,5 @@
 # FOIA Data Analysis
-This repository contains code and related discussions centered around processing and extracting data from Freedom of Information Act (FOIA) documents downloaded from [foia.gov](https://www.foia.gov/). The content includes various steps for handling XML parsing, data extraction, manipulation, and organization to enhance transparency and facilitate access to information.
+This repository contains R code for processing and extracting data from Freedom of Information Act (FOIA) documents downloaded from [foia.gov](https://www.foia.gov/). The content includes various steps for handling XML parsing, data extraction, manipulation, and organization to enhance transparency and facilitate access to information.
 
 ## Overview
 This code will extract data stored in XML format as provided by the [Freedom of Information Act
