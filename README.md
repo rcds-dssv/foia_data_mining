@@ -29,6 +29,9 @@ The packages can be installed in R using the install.packages("package_name") co
 
 ## Usage
 
+### Data
+XML Data can be downloaded from [foia.gov](https://www.foia.gov/). The code points to the folder 'FOIA Sample' but you can change this as necessary.
+
 ### Global Variables
 
 This section defines various global variables essential for data extraction, such as lists of subunit agencies, addresses of data locations within the XML file, organization associations, and reference IDs for different sections.
