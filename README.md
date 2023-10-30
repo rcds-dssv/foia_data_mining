@@ -14,8 +14,8 @@ of interest.
 
 ![image](https://github.com/patzacher/foia_data_mining/assets/71090911/79165eb3-cc2e-43de-9f18-d430e36dd0c0)
 
-## Dependencies
-The code in this repository relies on the following R libraries:
+## Installation
+To use this code, ensure you have the required R packages installed. The essential packages include:
 
 XML
 
@@ -24,6 +24,8 @@ xml2
 tibble
 
 tidyverse
+
+The packages can be installed in R using the install.packages("package_name") command.
 
 ## Usage
 
@@ -47,3 +49,12 @@ This section defines various global variables essential for data extraction, suc
 ### Extract and Save Data
 
 The final part of the code extracts and saves data from XML files in a designated folder. It systematically processes each file, applying the previously defined functions to filter and extract data from different sections for the agency of interest. The extracted data is stored in a list of data frames (foia_data), allowing easy access to specific sections and their data.
+
+## Contributing
+Contributions to this project are welcome. If you'd like to contribute, please follow these steps:
+
+Fork the repository.
+
+Create a new branch for your feature.
+
+Make your changes and submit a pull request.
