@@ -42,6 +42,6 @@ This section defines various global variables essential for data extraction, suc
 
 - Extracts data for a section (e.g., Request Disposition). The function iterates through a section, extracting values for the desired ID-X attributes and appends section and organization IDs to the resulting data frame.
 
-### Extract and Save Data
+## Extract and Save Data
 
 The final part of the code extracts and saves data from XML files in a designated folder. It systematically processes each file, applying the previously defined functions to filter and extract data from different sections for the agency of interest. The extracted data is stored in a list of data frames (foia_data), allowing easy access to specific sections and their data.
