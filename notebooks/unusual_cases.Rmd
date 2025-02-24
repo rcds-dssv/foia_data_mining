@@ -1,0 +1,80 @@
+---
+title: "Unusual Cases"
+author: "John Lee"
+date: "2025-02-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Document Description
+
+This document records unusual cases in the XML data that needs to accounted for.
+
+## Existing node, missing data
+
+Example data:
+
+- file: `DHS_fy17.xml`
+
+- node: `/iepd:FoiaAnnualReport/foia:OldestPendingConsultationSection/foia:OldestPendingItems`
+
+Node `/iepd:FoiaAnnualReport/foia:OldestPendingConsultationSection` should generally have children with `<foia:OldestPendingItems>` tag that contain data. An example looks like this for node with `s:id="OPC8"`
+
+```xml
+<foia:OldestPendingItems s:id="OPC8">
+	<foia:OldItem>
+		<foia:OldItemReceiptDate>2014-02-27</foia:OldItemReceiptDate>
+		<foia:OldItemPendingDaysQuantity>904</foia:OldItemPendingDaysQuantity>
+	</foia:OldItem>
+	<foia:OldItem>
+		<foia:OldItemReceiptDate>2014-04-18</foia:OldItemReceiptDate>
+		<foia:OldItemPendingDaysQuantity>868</foia:OldItemPendingDaysQuantity>
+	</foia:OldItem>
+	<foia:OldItem>
+		<foia:OldItemReceiptDate>2014-04-18</foia:OldItemReceiptDate>
+		<foia:OldItemPendingDaysQuantity>868</foia:OldItemPendingDaysQuantity>
+	</foia:OldItem>
+	<foia:OldItem>
+		<foia:OldItemReceiptDate>2014-05-19</foia:OldItemReceiptDate>
+		<foia:OldItemPendingDaysQuantity>847</foia:OldItemPendingDaysQuantity>
+	</foia:OldItem>
+	<foia:OldItem>
+		<foia:OldItemReceiptDate>2014-06-17</foia:OldItemReceiptDate>
+		<foia:OldItemPendingDaysQuantity>827</foia:OldItemPendingDaysQuantity>
+	</foia:OldItem>
+	<foia:OldItem>
+		<foia:OldItemReceiptDate>2014-06-24</foia:OldItemReceiptDate>
+		<foia:OldItemPendingDaysQuantity>822</foia:OldItemPendingDaysQuantity>
+	</foia:OldItem>
+	<foia:OldItem>
+		<foia:OldItemReceiptDate>2014-08-14</foia:OldItemReceiptDate>
+		<foia:OldItemPendingDaysQuantity>786</foia:OldItemPendingDaysQuantity>
+	</foia:OldItem>
+	<foia:OldItem>
+		<foia:OldItemReceiptDate>2014-08-19</foia:OldItemReceiptDate>
+		<foia:OldItemPendingDaysQuantity>783</foia:OldItemPendingDaysQuantity>
+	</foia:OldItem>
+	<foia:OldItem>
+		<foia:OldItemReceiptDate>2014-10-06</foia:OldItemReceiptDate>
+		<foia:OldItemPendingDaysQuantity>750</foia:OldItemPendingDaysQuantity>
+	</foia:OldItem>
+	<foia:OldItem>
+		<foia:OldItemReceiptDate>2014-10-06</foia:OldItemReceiptDate>
+		<foia:OldItemPendingDaysQuantity>750</foia:OldItemPendingDaysQuantity>
+	</foia:OldItem>
+</foia:OldestPendingItems>
+```
+
+However, some nodes have empty data. Consider node with `s:id="OPC12"`
+
+```xml
+<foia:OldestPendingItems s:id="OPC12"/>
+```
+
+Extracting data from this results in an empty data frame when pulling values.
+This is why the `section_values_function()` had an if block to check if the 
+data frame has column `t.extract_section_subunit_subset_x.`, which is a product
+of transposing an empty data frame.

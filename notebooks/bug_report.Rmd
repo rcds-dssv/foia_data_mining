@@ -1,0 +1,959 @@
+---
+title: "Bug Fixing"
+author: "John Lee"
+date: "2025-02-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(yaml)
+library(tidyverse)
+library(XML)
+library(xml2)
+library(tibble)
+```
+
+# Overview
+
+This notebook looks into several bugs in the code and aims to fix them.
+
+Following document assumes some file structure:
+
+- DHS xml files exist in `../FOIA Sample` directory.
+- YAML file (`DHS.yaml`) exists in `../yaml` directory.
+
+
+# Original Code
+
+Following code chunk are original data mining code.
+
+Additional functions to the original code include.
+
+`parse_xml()` - This function is the wrapper that combines previous functions to extract data from the XML files.
+
+`parse_yaml()` - This function reads in the YAML file and extracts the necessary information to be used in the `parse_xml()` function.
+
+`parse_and_save_foia()` - This function reads in the YAML file, extracts the necessary information, and then extracts the data from the XML files. The extracted data is then saved to a file.
+
+```{r}
+ORG_want_function <- function(xml_top_node,
+                              xml_parsed,
+                              subunit_want) {
+  
+  this_ORG_x <- xmlValue(
+    getNodeSet(xml_top_node,
+    "/iepd:FoiaAnnualReport/nc:Organization/nc:OrganizationAbbreviationText"))
+  
+  # this_year_x <- xmlValue(getNodeSet(xml_top_node,
+  #                    "/iepd:FoiaAnnualReport/foia:DocumentFiscalYearDate"))
+  
+  nodes_ORG_x <- getNodeSet(
+    xml_top_node, "/iepd:FoiaAnnualReport/nc:Organization/nc:OrganizationSubUnit")
+  
+  df_ORG_x <- xmlToDataFrame(nodes = nodes_ORG_x, stringsAsFactors = FALSE)
+  
+  df_ORG_x$ParentOrganization <- this_ORG_x
+  
+  # df_ORG_x$FY <- this_year_x
+  
+  ORG_attrs_x <- xpathSApply(
+    xml_parsed, 
+    "/iepd:FoiaAnnualReport/nc:Organization/nc:OrganizationSubUnit/@s:id")
+  
+  df_ORG_x$OrganizationReference <- ORG_attrs_x
+  
+  df_ORG_want_x <- filter(df_ORG_x, OrganizationAbbreviationText %in% subunit_want)
+  
+  return(df_ORG_want_x)
+}
+
+df_assoc_want_function <- function(ORG_want,
+                                   values_addresses,
+                                   assoc_addresses, 
+                                   assoc_attrs_orgs, 
+                                   assoc_attrs_vals,
+                                   xml_parsed,
+                                   xml_top_node) {
+  df_assoc_x = c()
+  
+  for (i in 1:length(assoc_addresses)){
+    node_assoc_sub_x <- getNodeSet(xml_top_node, assoc_addresses[i])
+    df_assoc_sub_x <- xmlToDataFrame(nodes = node_assoc_sub_x, stringsAsFactors = FALSE)
+    assoc_attrs_val_sub_x <- xpathSApply(xml_parsed, assoc_attrs_vals[i])
+    assoc_attrs_org_sub_x <- xpathSApply(xml_parsed, assoc_attrs_orgs[i])
+    df_assoc_sub_x[ , 1] <-  assoc_attrs_val_sub_x
+    df_assoc_sub_x[ , 2] <- assoc_attrs_org_sub_x
+    df_assoc_sub_x$values_address <- values_addresses[i]
+    
+    df_assoc_x <- bind_rows(df_assoc_x, df_assoc_sub_x)
+  }
+  
+  df_assoc_want_x <- filter(df_assoc_x, OrganizationReference %in%
+                              ORG_want$OrganizationReference)
+  
+  df_assoc_want_x$Section <- str_extract(df_assoc_want_x$values_address, '(?<=:)\\w*$')
+  
+  return(df_assoc_want_x)
+  
+}
+
+section_values_function <- function(ORG_want,
+                                    assoc_want,
+                                    xml_top_node,
+                                    values_address) {
+  section_values_year_x <- data.frame()
+  
+  for (i in 1:nrow(assoc_want)){
+    
+    node_section_subset_x <- getNodeSet(xml_top_node, 
+                                        paste0(values_address,
+                                               "[@s:id ='", 
+                                               assoc_want$ComponentDataReference[i],
+                                               "']"))
+    
+    if (length(node_section_subset_x) > 1) {
+      print(paste0("Too many nodes mapped:\n\tvalues_address: ", values_address,
+                  "\n\tComponentDataReference: ", assoc_want$ComponentDataReference[i]))
+    } else if (length(node_section_subset_x) == 0) {
+      print((paste0("No nodes mapped:\n\tvalues_address: ", values_address,
+                  "\n\tComponentDataReference: ", assoc_want$ComponentDataReference[i])))
+    }
+    
+    extract_section_subunit_subset_x = xmlSApply(node_section_subset_x, 
+                                                 function(x) xmlSApply(x, xmlValue))
+    section_subunit_values_subset_x = data.frame(t(extract_section_subunit_subset_x), 
+                                                 row.names = NULL)
+    
+    section_subunit_values_subset_x$ComponentDataReference <- assoc_want$ComponentDataReference[i]
+    section_subunit_values_subset_x$OrganizationReference <- assoc_want$OrganizationReference[i]
+    
+    section_values_year_x <- bind_rows(section_values_year_x, section_subunit_values_subset_x)
+  }
+  
+  section_values_year_x <- section_values_year_x %>% left_join(ORG_want,
+                                                               by = "OrganizationReference")
+  
+  section_values_year_x <- section_values_year_x %>% left_join(assoc_want,
+                                                               by = "ComponentDataReference") %>% 
+    select(-ends_with(".y"))
+  
+  if ("t.extract_section_subunit_subset_x." %in% colnames(section_values_year_x)) {
+    print(section_values_year_x)
+    section_values_year_x <- select(section_values_year_x, -"t.extract_section_subunit_subset_x.")
+  }
+  
+  return(section_values_year_x)
+}
+
+
+parse_xml <- function(
+    file_dir,
+    subunit_want_list,
+    values_address_list,
+    assoc_address_list,
+    assoc_attrs_val_list,
+    assoc_attrs_org_list) {
+  filenames <- dir(path = file_dir)
+  
+  # Create an empty list to store the data frames for each item in values_address_list
+  foia_data <- list()
+  
+  for (i in filenames) {
+    message("Parsing ", i, "...")
+    # Import and parse the XML file so we have a workable R format.
+    xml_1 <- xmlParse(file.path(file_dir, i))
+    
+    # Get the top-level node in the XML document we just parsed. This will allow
+    # us to more easily locate nodes of interest.
+    xml_top <- xmlRoot(xml_1)
+    
+    df_ORG_want <- ORG_want_function(
+      xml_top_node = xml_top,
+      xml_parsed = xml_1,
+      subunit_want = subunit_want_list
+    )
+    
+    df_assoc_want <- df_assoc_want_function(
+      ORG_want = df_ORG_want,
+      values_addresses = values_address_list,
+      assoc_addresses = assoc_address_list,
+      assoc_attrs_orgs = assoc_attrs_org_list,
+      assoc_attrs_vals = assoc_attrs_val_list,
+      xml_parsed = xml_1,
+      xml_top_node = xml_top
+    )
+    
+    # Loop through each item in values_address_list
+    for (address in values_address_list) {
+      # Filter based on section name.
+      df_assoc_want_filter <- filter(df_assoc_want,
+                                     Section == str_extract(address, '(?<=:)\\w*$'))
+      
+      section_values_data <-
+        section_values_function(
+          ORG_want = df_ORG_want,
+          assoc_want = df_assoc_want_filter,
+          xml_top_node = xml_top,
+          values_address = address
+        )
+      
+      # Add filename and FY to section_values_data
+      section_values_data$filename <- i
+      section_values_data$FY <- str_extract(i, '[:digit:]+')
+      
+      # Create a unique data frame name based on the section.
+      section_data_name <- str_extract(address, 'foia:([^/]+)')
+      section_data_name <- str_remove(section_data_name, 'foia:')
+      
+      # If section_data_name already exists in foia_data and the number
+      # of columns match, append to it. Before appending, make sure that the order
+      # of the column names match.
+      if (section_data_name %in% names(foia_data) &
+          length(colnames(section_values_data)) == length(colnames(foia_data[[section_data_name]]))) {
+        col_order <- colnames(foia_data[[section_data_name]])
+        
+        section_values_data <- section_values_data[col_order]
+        
+        foia_data[[section_data_name]] <-
+          rbind(foia_data[[section_data_name]], section_values_data)
+        
+      } else if (section_data_name %in% names(foia_data) &
+                 length(colnames(section_values_data)) != length(colnames(foia_data[[section_data_name]]))) {
+        # Check for missing columns between data frames and add the missing columns.
+        missing_columns <-
+          dplyr::setdiff(colnames(foia_data[[section_data_name]]),
+                         colnames(section_values_data))
+        for (column in missing_columns) {
+          section_values_data[[column]] <- NA
+        }
+        
+        # Make sure columns are in the same order
+        col_order <- colnames(foia_data[[section_data_name]])
+        
+        section_values_data <- section_values_data[col_order]
+        
+        # Append to foia_data
+        foia_data[[section_data_name]] <-
+          rbind(foia_data[[section_data_name]], section_values_data)
+        
+      } else {
+        # If section_data_name doesn't exist, create a new entry in the list
+        foia_data[[section_data_name]] <- section_values_data
+      }
+    } # To access the data in a section you can use foia_data$SectionName (e.g.,
+  }   # foia_data$RequestDisposition) or foia_data[["SectionName"]].
+  
+  return(foia_data)
+}
+
+parse_yaml <- function(yaml_file) {
+  yaml_data <- yaml.load_file(yaml_file)
+  
+  # extract global vectors
+  values_address_list <- yaml_data$tables %>% map_chr("values_address")
+  assoc_address_list <- yaml_data$tables %>% map_chr("assoc_address")
+  assoc_attrs_val_list <- yaml_data$tables %>% map_chr("assoc_attrs_val")
+  assoc_attrs_org_list <- yaml_data$tables %>% map_chr("assoc_attrs_org")
+  
+  # clean yaml data into list
+  output_list <- list(
+    data_dir = yaml_data$xml_directory,
+    components = yaml_data$components,
+    output_file = yaml_data$output_file,
+    values_address_list = values_address_list,
+    assoc_address_list = assoc_address_list,
+    assoc_attrs_val_list = assoc_attrs_val_list,
+    assoc_attrs_org_list = assoc_attrs_org_list
+  )
+  
+  return(output_list)
+}
+
+parse_and_save_foia <- function(yaml_file, output_dir = ".") {
+  yaml_data <- parse_yaml(yaml_file)
+  
+  foia_data <- parse_xml(
+    file_dir = yaml_data$data_dir,
+    subunit_want_list = yaml_data$components,
+    values_address_list = yaml_data$values_address_list,
+    assoc_address_list = yaml_data$assoc_address_list,
+    assoc_attrs_val_list = yaml_data$assoc_attrs_val_list,
+    assoc_attrs_org_list = yaml_data$assoc_attrs_org_list
+  )
+  
+  save(foia_data, file = file.path(output_dir, yaml_data$output_file))
+}
+```
+
+# Bugs
+
+## Concatenated Values
+
+First bug happens where data nested in a particular 'section' are combined into a single value.
+
+Consider the following parameters:
+
+```{r}
+file_dir <- "../FOIA Sample"
+subunit_want_list <- c("CBP", "PRIV", "USCIS", "ICE", "OIG", "CRCL")
+values_address_list <- c("/iepd:FoiaAnnualReport/foia:RequestDispositionSection/foia:RequestDisposition")
+assoc_address_list <- c("/iepd:FoiaAnnualReport/foia:RequestDispositionSection/foia:RequestDispositionOrganizationAssociation")
+assoc_attrs_val_list <- c("/iepd:FoiaAnnualReport/foia:RequestDispositionSection/foia:RequestDispositionOrganizationAssociation/foia:ComponentDataReference/@s:ref")
+assoc_attrs_org_list <- c("/iepd:FoiaAnnualReport/foia:RequestDispositionSection/foia:RequestDispositionOrganizationAssociation/nc:OrganizationReference/@s:ref")
+```
+
+`parse_xml()` should extract the following information from RequestDispositionSection for specified subunits.
+
+```{r}
+dhs_request_disp <- parse_xml(
+  file_dir = file_dir,
+  subunit_want_list = subunit_want_list,
+  values_address_list = values_address_list,
+  assoc_address_list = assoc_address_list,
+  assoc_attrs_val_list = assoc_attrs_val_list,
+  assoc_attrs_org_list = assoc_attrs_org_list
+)
+head(dhs_request_disp$RequestDisposition)
+```
+
+Take a look at first row:
+
+```{r}
+dhs_request_disp$RequestDispositionSection %>%
+  slice(1) %>%
+  str()
+```
+
+While `RequestDispositionFullGrantQuantity` has a single value, `NonExmptionDenial` and `NonExemptionDenial.1` have multiple values pasted together. 
+
+Take a look at the nodes in `DHS_fy10.xml`.
+
+```{r}
+xml_1 <- xmlParse(file.path(file_dir, "DHS_fy10.xml"))
+xml_top_node <- xmlRoot(xml_1)
+```
+
+Following code extracts the node  `/iepd:FoiaAnnualReport/foia:RequestDispositionSection/foia:RequestDisposition` corresponding to subcomponent with id `RD1`.
+
+```{r}
+getNodeSet(
+  xml_top_node,
+  paste0(values_address_list[1], "[@s:id='RD1']")
+)
+```
+
+As you can see in the xml data above, the nested data causes values to be pasted together.
+
+This happens within the `section_values_function()` function.
+
+```{r}
+df_ORG_want <- ORG_want_function(
+  xml_top_node = xml_top_node,
+  xml_parsed = xml_1,
+  subunit_want = subunit_want_list
+)
+
+df_assoc_want <- df_assoc_want_function(
+  ORG_want = df_ORG_want,
+  values_addresses = values_address_list,
+  assoc_addresses = assoc_address_list,
+  assoc_attrs_orgs = assoc_attrs_org_list,
+  assoc_attrs_vals = assoc_attrs_val_list,
+  xml_parsed = xml_1,
+  xml_top_node = xml_top_node
+)
+
+address <- values_address_list
+
+df_assoc_want_filter <- filter(df_assoc_want,
+                                     Section == str_extract(address, '(?<=:)\\w*$'))
+
+section_values_data <-
+  section_values_function(
+    ORG_want = df_ORG_want,
+    assoc_want = df_assoc_want_filter,
+    xml_top_node = xml_top_node,
+    values_address = address
+  )
+
+section_values_data
+```
+
+Following is a code snippet within the function that attempts to extract these values for a given subunit.
+
+```{r}
+# define values address and "ith subcomponent"
+values_address <- values_address_list[1]
+i <- 1
+
+node_section_subset_x <- getNodeSet(xml_top_node, 
+                                        paste0(values_address,
+                                               "[@s:id ='", 
+                                               df_assoc_want$ComponentDataReference[i],
+                                               "']"))
+    
+extract_section_subunit_subset_x = xmlSApply(node_section_subset_x, 
+                                             function(x) xmlSApply(x, xmlValue))
+section_subunit_values_subset_x = data.frame(t(extract_section_subunit_subset_x), 
+                                             row.names = NULL)
+print(section_subunit_values_subset_x)
+```
+
+I want to extract each value individually for `node_section_subset_x[[1]]`. The following function will recursively extract the values.
+
+```{r}
+get_xml_value_recursive <- function(node) {
+  if (xmlSize(node) == 1) {
+    return(xmlValue(node))
+  } else if (xmlSize(node) == 0) {
+    return(data.frame())
+  } else {
+    return(xmlApply(node, get_xml_value_recursive))
+  }
+}
+```
+
+I can apply this function as I extract the correct node and then convert to data frame.
+
+```{r}
+getNodeSet(
+  xml_top_node,
+  paste0(values_address_list[1], "[@s:id='RD1']"),
+  fun = get_xml_value_recursive
+) %>% 
+  .[[1]] %>%
+  as.data.frame() %>%
+  str()
+```
+
+Now we have a far more reasonable data frame.
+
+This new function will be incorporated into the `section_values_function()` function in the following way.
+
+```{r}
+ORG_want <- df_ORG_want
+assoc_want <- df_assoc_want
+xml_top_node <- xml_top_node
+values_address <- values_address_list[1]
+
+section_values_year_x <- data.frame()
+  
+for (i in 1:nrow(assoc_want)){
+  
+  # grab head node according to the data reference ID and extract values recursively
+  node_section_subset_x <- getNodeSet(
+    xml_top_node,
+    str_glue("{values_address}[@s:id ='{assoc_want$ComponentDataReference[i]}']"),
+    fun = get_xml_value_recursive)
+  
+  section_subunit_values_subset_x <- node_section_subset_x %>%
+    `[[`(1) %>%
+    as.data.frame()
+  
+  print(str_glue("Number of columns: {ncol(section_subunit_values_subset_x)}"))
+  
+  # sometimes the head node exists doesn't contain any data, resulting in a
+  # data frame with 0 rows. In this case just create a new data frame 
+  # with data / organization reference ID
+  # Check "Existing node, missing data" section in "unusual_cases.Rmd" file
+  if (nrow(section_subunit_values_subset_x) == 0) {
+    section_subunit_values_subset_x <- data.frame(
+      ComponentDataReference = assoc_want$ComponentDataReference[i],
+      OrganizationReference = assoc_want$OrganizationReference[i]
+    )
+  } else {
+    section_subunit_values_subset_x$ComponentDataReference <- assoc_want$ComponentDataReference[i]
+    section_subunit_values_subset_x$OrganizationReference <- assoc_want$OrganizationReference[i]
+  }
+  
+  section_values_year_x <- bind_rows(section_values_year_x, section_subunit_values_subset_x)
+}
+
+section_values_year_x <- section_values_year_x %>% left_join(ORG_want,
+                                                             by = "OrganizationReference")
+
+section_values_year_x <- section_values_year_x %>% left_join(assoc_want,
+                                                             by = "ComponentDataReference") %>% 
+  select(-ends_with(".y"))
+
+if ("t.extract_section_subunit_subset_x." %in% colnames(section_values_year_x)) {
+  # keep this check just to make sure that all possibility is accounted for
+  # based on the original function
+  # Check "Existing node, missing data" section in "unusual_cases.Rmd" file
+  # for more information
+  stop("'t.extract_section_subunit_subset_x.' column exists.",
+       " Check comments in the section_values_function2() function.")
+}
+```
+
+## Wrong Node Name
+
+There's a typo in the node address section for `OldestPendingAppealSection`.
+
+The value address is written as `"/iepd:FoiaAnnualReport/foia:OldestPendingAppealSection/foia:OldestPendingTimes"`
+but it's clear that it should be `"/iepd:FoiaAnnualReport/foia:OldestPendingAppealSection/foia:OldestPendingItems"`.
+
+I.e. the last part should be `foia:OldestPendingItems` instead of `foia:OldestPendingTimes`.
+
+```{r}
+# wrong
+getNodeSet(
+  xml_top_node,
+  str_glue("/iepd:FoiaAnnualReport/foia:OldestPendingAppealSection/foia:OldestPendingTimes")
+)
+
+# corrected
+getNodeSet(
+  xml_top_node,
+  str_glue("/iepd:FoiaAnnualReport/foia:OldestPendingAppealSection/foia:OldestPendingItems[@s:id='OPA8']")
+)
+```
+
+## Wrong Node Name (2)
+
+Similarly, `/iepd:FoiaAnnualReport/foia:OldestPendingRequestSection/foia:OldestPendingItems/foia:OldItem/foia:OldItemPendingDaysQuantity` also doesn't work.
+
+```{r}
+file_dir <- "../FOIA Sample"
+subunit_want_list <- c("CBP", "PRIV", "USCIS", "ICE", "OIG", "CRCL")
+values_address_list <- c("/iepd:FoiaAnnualReport/foia:OldestPendingRequestSection/foia:OldestPendingItems/foia:OldItem/foia:OldItemPendingDaysQuantity")
+assoc_address_list <- c("/iepd:FoiaAnnualReport/foia:OldestPendingRequestSection/foia:OldestPendingItemsOrganizationAssociation")
+assoc_attrs_val_list <- c("/iepd:FoiaAnnualReport/foia:OldestPendingRequestSection/foia:OldestPendingItemsOrganizationAssociation/foia:ComponentDataReference/@s:ref")
+assoc_attrs_org_list <- c("/iepd:FoiaAnnualReport/foia:OldestPendingRequestSection/foia:OldestPendingItemsOrganizationAssociation/nc:OrganizationReference/@s:ref")
+```
+
+```{r}
+df_assoc_want <- df_assoc_want_function(
+  ORG_want = df_ORG_want,
+  values_addresses = values_address_list,
+  assoc_addresses = assoc_address_list,
+  assoc_attrs_orgs = assoc_attrs_org_list,
+  assoc_attrs_vals = assoc_attrs_val_list,
+  xml_parsed = xml_1,
+  xml_top_node = xml_top_node
+)
+
+address <- values_address_list
+
+df_assoc_want_filter <- filter(df_assoc_want,
+                                     Section == str_extract(address, '(?<=:)\\w*$'))
+
+section_values_data <-
+  section_values_function(
+    ORG_want = df_ORG_want,
+    assoc_want = df_assoc_want_filter,
+    xml_top_node = xml_top_node,
+    values_address = address
+  )
+
+print(section_values_data)
+```
+
+This is happening because inside `section_values_function()` the program attempts to find the node `/iepd:FoiaAnnualReport/foia:OldestPendingRequestSection/foia:OldestPendingItems/foia:OldItem/foia:OldItemPendingDaysQuantity` with corresponding data id (e.g. `OPR1`).
+
+```{r}
+ORG_want <- df_ORG_want
+assoc_want <- df_assoc_want
+xml_top_node <- xml_top_node
+values_address <- values_address_list[1]
+
+section_values_year_x <- data.frame()
+  
+i <- 1
+  
+# grab head node according to the data reference ID and extract values recursively
+node_section_subset_x <- getNodeSet(
+  xml_top_node,
+  str_glue("{values_address}[@s:id ='{assoc_want$ComponentDataReference[i]}']"),
+  fun = get_xml_value_recursive)
+  
+print(node_section_subset_x)
+```
+
+To fix this, correct node address should be used, which is `/iepd:FoiaAnnualReport/foia:OldestPendingRequestSection/foia:OldestPendingItems`.
+
+## Overlapping Node Names
+
+Consider the following parameters. Notice that the values address for all three nodes have the same terminating node name, `"ProcessingStatistics"`.
+
+```{r}
+file_dir <- "../FOIA Sample"
+subunit_want_list <- c("CBP", "PRIV", "USCIS", "ICE", "OIG", "CRCL")
+values_address_list <- c(
+  "/iepd:FoiaAnnualReport/foia:ProcessedRequestSection/foia:ProcessingStatistics",
+  "/iepd:FoiaAnnualReport/foia:ProcessedAppealSection/foia:ProcessingStatistics",
+  "/iepd:FoiaAnnualReport/foia:ProcessedConsultationSection/foia:ProcessingStatistics"
+)
+assoc_address_list <- c(
+  "/iepd:FoiaAnnualReport/foia:ProcessedRequestSection/foia:ProcessingStatisticsOrganizationAssociation",
+  "/iepd:FoiaAnnualReport/foia:ProcessedAppealSection/foia:ProcessingStatisticsOrganizationAssociation",
+  "/iepd:FoiaAnnualReport/foia:ProcessedConsultationSection/foia:ProcessingStatisticsOrganizationAssociation"
+)
+assoc_attrs_val_list <- c(
+  "/iepd:FoiaAnnualReport/foia:ProcessedRequestSection/foia:ProcessingStatisticsOrganizationAssociation/foia:ComponentDataReference/@s:ref",
+  "/iepd:FoiaAnnualReport/foia:ProcessedAppealSection/foia:ProcessingStatisticsOrganizationAssociation/foia:ComponentDataReference/@s:ref",
+  "/iepd:FoiaAnnualReport/foia:ProcessedConsultationSection/foia:ProcessingStatisticsOrganizationAssociation/foia:ComponentDataReference/@s:ref"
+)
+assoc_attrs_org_list <- c(
+  "/iepd:FoiaAnnualReport/foia:ProcessedRequestSection/foia:ProcessingStatisticsOrganizationAssociation/nc:OrganizationReference/@s:ref",
+  "/iepd:FoiaAnnualReport/foia:ProcessedAppealSection/foia:ProcessingStatisticsOrganizationAssociation/nc:OrganizationReference/@s:ref",
+  "/iepd:FoiaAnnualReport/foia:ProcessedConsultationSection/foia:ProcessingStatisticsOrganizationAssociation/nc:OrganizationReference/@s:ref"
+)
+```
+
+Use the original functions to extract the intermediary data,
+
+```{r}
+xml_1 <- xmlParse(file.path(file_dir, "DHS_fy10.xml"))
+xml_top_node <- xmlRoot(xml_1)
+
+df_ORG_want <- ORG_want_function(
+  xml_top_node = xml_top_node,
+  xml_parsed = xml_1,
+  subunit_want = subunit_want_list
+)
+
+df_assoc_want <- df_assoc_want_function(
+  ORG_want = df_ORG_want,
+  values_addresses = values_address_list,
+  assoc_addresses = assoc_address_list,
+  assoc_attrs_orgs = assoc_attrs_org_list,
+  assoc_attrs_vals = assoc_attrs_val_list,
+  xml_parsed = xml_1,
+  xml_top_node = xml_top_node
+)
+
+section_values_data <-
+  section_values_function(
+    ORG_want = df_ORG_want,
+    assoc_want = df_assoc_want_filter,
+    xml_top_node = xml_top_node,
+    values_address = address
+  )
+```
+
+Run `parse_xml()` on the following parameters, and look at the `ProcessedRequestSection` data.
+
+```{r}
+parsed_data <- parse_xml(
+  file_dir = file_dir,
+  subunit_want_list = subunit_want_list,
+  values_address_list = values_address_list,
+  assoc_address_list = assoc_address_list,
+  assoc_attrs_val_list = assoc_attrs_val_list,
+  assoc_attrs_org_list = assoc_attrs_org_list
+)
+```
+
+Look at `df_assoc_want`. Notice that all rows have different values_address, but end up with the same Section due to the terminal node being the same.
+
+```{r}
+df_assoc_want
+```
+
+This results in all of `df_assoc_want$ComponentDataReference` being searched for all Sections. Look at the following data frame subset.
+
+```{r}
+parsed_data$ProcessedRequestSection %>%
+  slice(1:10)
+```
+
+This happens in the following step inside the `parse_xml()` function.
+
+```{r}
+address <- values_address_list[1]
+
+# Filter based on section name.
+df_assoc_want_filter <- filter(df_assoc_want,
+                               Section == str_extract(address, '(?<=:)\\w*$'))
+
+df_assoc_want_filter
+```
+
+Ideally I only want the data frame to contain rows for `ProcessedRequestSection`, but that's not exactly what I get.
+
+It would be more ideal to filter based on the `values_address` column instead.
+
+```{r}
+filter(df_assoc_want, values_address == address)
+```
+
+```{r}
+yaml_parsed <- parse_yaml("../yaml/DHS.yaml")
+
+length(unique(str_extract(yaml_parsed$values_address_list, 'foia:([^/]+)')))
+```
+
+In the end this caused problem in the `section_valued_functions()` function since the address wouldn't return any valid nodes.
+
+Example:
+
+```{r}
+print(address) # section is ProcessedRequestSection
+print(df_assoc_want_filter[8,]) # Row supposedly for ProcessedAppealSection
+
+node_section_subset_x <- getNodeSet(
+      xml_top_node,
+      str_glue("{address}[@s:id ='{df_assoc_want_filter$ComponentDataReference[8]}']"),
+      fun = get_xml_value_recursive)
+
+print(node_section_subset_x)
+```
+
+
+# Edits
+
+Write new function for `section_values_function()` that uses this method and try comparing the results.
+
+```{r}
+# recursive function
+get_xml_value_recursive <- function(node) {
+  if (xmlSize(node) == 1) {
+    return(xmlValue(node))
+  } else if (xmlSize(node) == 0) {
+    return(NA)
+  } else {
+    return(xmlApply(node, get_xml_value_recursive))
+  }
+}
+
+section_values_function <- function(ORG_want,
+                                    assoc_want,
+                                    xml_top_node,
+                                    values_address) {
+  
+  section_values_year_x <- data.frame()
+
+  for (i in 1:nrow(assoc_want)){
+    
+    # grab head node according to the data reference ID and extract values recursively
+    node_section_subset_x <- getNodeSet(
+      xml_top_node,
+      str_glue("{values_address}[@s:id ='{assoc_want$ComponentDataReference[i]}']"),
+      fun = get_xml_value_recursive)
+    
+    if (length(node_section_subset_x) > 1) {
+        stop(str_glue(
+          "Too many nodes mapped:",
+          "\tvalues_address: {values_address}",
+          "\tComponentDataReference: {assoc_want$ComponentDataReference[i]}",
+          .sep = "\n"
+        ))
+      } else if (length(node_section_subset_x) == 0) {
+        warning(str_glue(
+          "No nodes mapped:",
+          "\tvalues_address: {values_address}",
+          "\tComponentDataReference: {assoc_want$ComponentDataReference[i]}\n",
+          .sep = "\n"
+        ))
+        section_subunit_values_subset_x <- data.frame()
+      } else {
+        section_subunit_values_subset_x <- node_section_subset_x %>%
+        `[[`(1) %>%
+        as.data.frame()
+      }
+    
+    # sometimes the head node exists doesn't contain any data, resulting in a
+    # data frame with 0 rows. In this case just create a new data frame 
+    # with data / organization reference ID
+    # Check "Existing node, missing data" section in "unusual_cases.Rmd" file
+    if (nrow(section_subunit_values_subset_x) == 0) {
+      section_subunit_values_subset_x <- data.frame(
+        ComponentDataReference = assoc_want$ComponentDataReference[i],
+        OrganizationReference = assoc_want$OrganizationReference[i]
+      )
+    } else {
+      section_subunit_values_subset_x$ComponentDataReference <- assoc_want$ComponentDataReference[i]
+      section_subunit_values_subset_x$OrganizationReference <- assoc_want$OrganizationReference[i]
+    }
+    
+    section_values_year_x <- bind_rows(section_values_year_x, section_subunit_values_subset_x)
+  }
+  
+  section_values_year_x <- section_values_year_x %>% left_join(ORG_want,
+                                                               by = "OrganizationReference")
+  
+  section_values_year_x <- section_values_year_x %>% left_join(assoc_want,
+                                                               by = "ComponentDataReference") %>% 
+    select(-ends_with(".y"))
+  
+  if ("t.extract_section_subunit_subset_x." %in% colnames(section_values_year_x)) {
+    # keep this check just to make sure that all possibility is accounted for
+    # based on the original function
+    # Check "Existing node, missing data" section in "unusual_cases.Rmd" file
+    # for more information
+    stop("'t.extract_section_subunit_subset_x.' column exists.",
+         " Check comments in the section_values_function2() function.")
+  }
+  
+  return(section_values_year_x)
+}
+```
+
+Also rewrite `parse_xml()` function to reflect new filtering method.
+
+```{r}
+parse_xml <- function(
+    file_dir,
+    subunit_want_list,
+    values_address_list,
+    assoc_address_list,
+    assoc_attrs_val_list,
+    assoc_attrs_org_list) {
+  filenames <- dir(path = file_dir)
+  
+  # Create an empty list to store the data frames for each item in values_address_list
+  foia_data <- list()
+  
+  for (i in filenames) {
+    message("Parsing ", i, "...")
+    # Import and parse the XML file so we have a workable R format.
+    xml_1 <- xmlParse(file.path(file_dir, i))
+    
+    # Get the top-level node in the XML document we just parsed. This will allow
+    # us to more easily locate nodes of interest.
+    xml_top <- xmlRoot(xml_1)
+    
+    df_ORG_want <- ORG_want_function(
+      xml_top_node = xml_top,
+      xml_parsed = xml_1,
+      subunit_want = subunit_want_list
+    )
+    
+    df_assoc_want <- df_assoc_want_function(
+      ORG_want = df_ORG_want,
+      values_addresses = values_address_list,
+      assoc_addresses = assoc_address_list,
+      assoc_attrs_orgs = assoc_attrs_org_list,
+      assoc_attrs_vals = assoc_attrs_val_list,
+      xml_parsed = xml_1,
+      xml_top_node = xml_top
+    )
+    
+    # Loop through each item in values_address_list
+    for (address in values_address_list) {
+      # Filter based on section name.
+      df_assoc_want_filter <- filter(df_assoc_want, values_address == address)
+      
+      section_values_data <-
+        section_values_function(
+          ORG_want = df_ORG_want,
+          assoc_want = df_assoc_want_filter,
+          xml_top_node = xml_top,
+          values_address = address
+        )
+      
+      # Add filename and FY to section_values_data
+      section_values_data$filename <- i
+      section_values_data$FY <- str_extract(i, '[:digit:]+')
+      
+      # Create a unique data frame name based on the section.
+      section_data_name <- str_extract(address, 'foia:([^/]+)')
+      section_data_name <- str_remove(section_data_name, 'foia:')
+      
+      # If section_data_name already exists in foia_data and the number
+      # of columns match, append to it. Before appending, make sure that the order
+      # of the column names match.
+      if (section_data_name %in% names(foia_data) &
+          length(colnames(section_values_data)) == length(colnames(foia_data[[section_data_name]]))) {
+        col_order <- colnames(foia_data[[section_data_name]])
+        
+        section_values_data <- section_values_data[col_order]
+        
+        foia_data[[section_data_name]] <-
+          rbind(foia_data[[section_data_name]], section_values_data)
+        
+      } else if (section_data_name %in% names(foia_data) &
+                 length(colnames(section_values_data)) != length(colnames(foia_data[[section_data_name]]))) {
+        # Check for missing columns between data frames and add the missing columns.
+        missing_columns <-
+          dplyr::setdiff(colnames(foia_data[[section_data_name]]),
+                         colnames(section_values_data))
+        for (column in missing_columns) {
+          section_values_data[[column]] <- NA
+        }
+        
+        # Make sure columns are in the same order
+        col_order <- colnames(foia_data[[section_data_name]])
+        
+        section_values_data <- section_values_data[col_order]
+        
+        # Append to foia_data
+        foia_data[[section_data_name]] <-
+          rbind(foia_data[[section_data_name]], section_values_data)
+        
+      } else {
+        # If section_data_name doesn't exist, create a new entry in the list
+        foia_data[[section_data_name]] <- section_values_data
+      }
+    } # To access the data in a section you can use foia_data$SectionName (e.g.,
+  }   # foia_data$RequestDisposition) or foia_data[["SectionName"]].
+  
+  return(foia_data)
+}
+```
+
+
+```{r}
+yaml_parsed <- parse_yaml("../yaml/DHS.yaml")
+
+parsed_data <- parse_xml(
+  file_dir = file_dir,
+  subunit_want_list = yaml_parsed$components,
+  values_address_list = yaml_parsed$values_address_list,
+  assoc_address_list = yaml_parsed$assoc_address_list,
+  assoc_attrs_val_list = yaml_parsed$assoc_attrs_val_list,
+  assoc_attrs_org_list = yaml_parsed$assoc_attrs_org_list
+)
+```
+
+```{r}
+i <- 6
+file_dir <- "../FOIA Sample"
+subunit_want_list <- c("CBP", "PRIV", "USCIS", "ICE", "OIG", "CRCL")
+values_address_list <- yaml_parsed$values_address_list[i]
+assoc_address_list <- yaml_parsed$assoc_address_list[i]
+assoc_attrs_val_list <- yaml_parsed$assoc_attrs_val_list[i]
+assoc_attrs_org_list <- yaml_parsed$assoc_attrs_org_list[i]
+
+xml_1 <- xmlParse(file.path(file_dir, "DHS_fy10.xml"))
+xml_top_node <- xmlRoot(xml_1)
+
+df_ORG_want <- ORG_want_function(
+  xml_top_node = xml_top_node,
+  xml_parsed = xml_1,
+  subunit_want = subunit_want_list
+)
+
+df_assoc_want <- df_assoc_want_function(
+  ORG_want = df_ORG_want,
+  values_addresses = values_address_list,
+  assoc_addresses = assoc_address_list,
+  assoc_attrs_orgs = assoc_attrs_org_list,
+  assoc_attrs_vals = assoc_attrs_val_list,
+  xml_parsed = xml_1,
+  xml_top_node = xml_top_node
+)
+
+df_assoc_want_filter <- filter(df_assoc_want, values_address == values_address_list)
+
+section_values_data <-
+  section_values_function(
+    ORG_want = df_ORG_want,
+    assoc_want = df_assoc_want_filter,
+    xml_top_node = xml_top_node,
+    values_address = values_address_list
+  )
+```
+
+# Conclusion
+
+The following document showed bugs related to concatenated values, wrong node names being specified and bugs due to overlapping "section" names taken from the end of the node. Following changes were made:
+
+1. Update `section_values_function()` to recursively extract values from nodes.
+2. Update `parse_xml()` to filter based on `values_address` instead of `Section` column.
+3. Update nodes
+  - `"/iepd:FoiaAnnualReport/foia:OldestPendingAppealSection/foia:OldestPendingTimes"` -> `"/iepd:FoiaAnnualReport/foia:OldestPendingAppealSection/foia:OldestPendingItems"`
+  - `"/iepd:FoiaAnnualReport/foia:OldestPendingRequestSection/foia:OldestPendingItems/foia:OldItem/foia:OldItemPendingDaysQuantity"` -> `"/iepd:FoiaAnnualReport/foia:OldestPendingRequestSection/foia:OldestPendingItems"`

@@ -65,27 +65,116 @@ df_assoc_want_function <- function(ORG_want,
   
 }
 
+# section_values_function <- function(ORG_want,
+#                                     assoc_want,
+#                                     xml_top_node,
+#                                     values_address) {
+#   section_values_year_x <- data.frame()
+#   
+#   for (i in 1:nrow(assoc_want)){
+#     
+#     node_section_subset_x <- getNodeSet(xml_top_node, 
+#                                         paste0(values_address,
+#                                                "[@s:id ='", 
+#                                                assoc_want$ComponentDataReference[i],
+#                                                "']"))
+#     
+#     if (length(node_section_subset_x) > 1) {
+#       print(paste0("Too many nodes mapped:\n\tvalues_address: ", values_address,
+#                   "\n\tComponentDataReference: ", assoc_want$ComponentDataReference[i]))
+#     } else if (length(node_section_subset_x) == 0) {
+#       print((paste0("No nodes mapped:\n\tvalues_address: ", values_address,
+#                   "\n\tComponentDataReference: ", assoc_want$ComponentDataReference[i])))
+#     }
+#     
+#     extract_section_subunit_subset_x = xmlSApply(node_section_subset_x, 
+#                                                  function(x) xmlSApply(x, xmlValue))
+#     section_subunit_values_subset_x = data.frame(t(extract_section_subunit_subset_x), 
+#                                                  row.names = NULL)
+#     
+#     section_subunit_values_subset_x$ComponentDataReference <- assoc_want$ComponentDataReference[i]
+#     section_subunit_values_subset_x$OrganizationReference <- assoc_want$OrganizationReference[i]
+#     
+#     section_values_year_x <- bind_rows(section_values_year_x, section_subunit_values_subset_x)
+#   }
+#   
+#   section_values_year_x <- section_values_year_x %>% left_join(ORG_want,
+#                                                                by = "OrganizationReference")
+#   
+#   section_values_year_x <- section_values_year_x %>% left_join(assoc_want,
+#                                                                by = "ComponentDataReference") %>% 
+#     select(-ends_with(".y"))
+#   
+#   if ("t.extract_section_subunit_subset_x." %in% colnames(section_values_year_x)) {
+#     print(str_glue("If statement applied here: {values_address}"))
+#     print(section_values_year_x)
+#     section_values_year_x <- select(section_values_year_x, -"t.extract_section_subunit_subset_x.")
+#   }
+#   
+#   return(section_values_year_x)
+# }
+
+##### NEW recursive code to extract values from the nodes separately
+get_xml_value_recursive <- function(node) {
+  if (xmlSize(node) == 1) {
+    return(xmlValue(node))
+  } else if (xmlSize(node) == 0) {
+    return(NA)
+  } else {
+    return(xmlApply(node, get_xml_value_recursive))
+  }
+}
+
+# new implementation of section_values_function
 section_values_function <- function(ORG_want,
                                     assoc_want,
                                     xml_top_node,
                                     values_address) {
+  
   section_values_year_x <- data.frame()
   
   for (i in 1:nrow(assoc_want)){
     
-    node_section_subset_x <- getNodeSet(xml_top_node, 
-                                        paste0(values_address,
-                                               "[@s:id ='", 
-                                               assoc_want$ComponentDataReference[i],
-                                               "']"))
+    # grab head node according to the data reference ID and extract values recursively
+    node_section_subset_x <- getNodeSet(
+      xml_top_node,
+      str_glue("{values_address}[@s:id ='{assoc_want$ComponentDataReference[i]}']"),
+      fun = get_xml_value_recursive)
     
-    extract_section_subunit_subset_x = xmlSApply(node_section_subset_x, 
-                                                 function(x) xmlSApply(x, xmlValue))
-    section_subunit_values_subset_x = data.frame(t(extract_section_subunit_subset_x), 
-                                                 row.names = NULL)
+    if (length(node_section_subset_x) > 1) {
+      stop(str_glue(
+        "Too many nodes mapped:",
+        "\tvalues_address: {values_address}",
+        "\tComponentDataReference: {assoc_want$ComponentDataReference[i]}",
+        .sep = "\n"
+      ))
+    } else if (length(node_section_subset_x) == 0) {
+      warning(str_glue(
+        "No nodes mapped:",
+        "\tvalues_address: {values_address}",
+        "\tComponentDataReference: {assoc_want$ComponentDataReference[i]}\n",
+        .sep = "\n"
+      ))
+      section_subunit_values_subset_x <- data.frame()
+    } else {
+      section_subunit_values_subset_x <- node_section_subset_x %>%
+        `[[`(1) %>%
+        as.data.frame()
+    }
     
-    section_subunit_values_subset_x$ComponentDataReference <- assoc_want$ComponentDataReference[i]
-    section_subunit_values_subset_x$OrganizationReference <- assoc_want$OrganizationReference[i]
+    # sometimes the head node exists doesn't contain any data, resulting in a
+    # data frame with 0 rows. In this case just create a new data frame 
+    # with data / organization reference ID
+    # Check "Existing node, missing data" section in "unusual_cases.Rmd" file
+    if (nrow(section_subunit_values_subset_x) == 0) {
+      section_subunit_values_subset_x <- data.frame(
+        ComponentDataReference = assoc_want$ComponentDataReference[i],
+        OrganizationReference = assoc_want$OrganizationReference[i]
+      )
+    } else {
+      section_subunit_values_subset_x$ComponentDataReference <- assoc_want$ComponentDataReference[i]
+      section_subunit_values_subset_x$OrganizationReference <- assoc_want$OrganizationReference[i]
+    }
     
     section_values_year_x <- bind_rows(section_values_year_x, section_subunit_values_subset_x)
   }
@@ -98,11 +187,17 @@ section_values_function <- function(ORG_want,
     select(-ends_with(".y"))
   
   if ("t.extract_section_subunit_subset_x." %in% colnames(section_values_year_x)) {
-    section_values_year_x <- select(section_values_year_x, -"t.extract_section_subunit_subset_x.")
+    # keep this check just to make sure that all possibility is accounted for
+    # based on the original function
+    # Check "Existing node, missing data" section in "unusual_cases.Rmd" file
+    # for more information
+    stop("'t.extract_section_subunit_subset_x.' column exists.",
+         " Check comments in the section_values_function2() function.")
   }
   
   return(section_values_year_x)
 }
+
 
 parse_xml <- function(
     file_dir,
@@ -117,6 +212,8 @@ parse_xml <- function(
   foia_data <- list()
   
   for (i in filenames) {
+    message("Parsing ", i, "...")
+    
     # Import and parse the XML file so we have a workable R format.
     xml_1 <- xmlParse(file.path(file_dir, i))
     
@@ -143,8 +240,7 @@ parse_xml <- function(
     # Loop through each item in values_address_list
     for (address in values_address_list) {
       # Filter based on section name.
-      df_assoc_want_filter <- filter(df_assoc_want,
-                                     Section == str_extract(address, '(?<=:)\\w*$'))
+      df_assoc_want_filter <- filter(df_assoc_want, values_address == address)
       
       section_values_data <-
         section_values_function(
