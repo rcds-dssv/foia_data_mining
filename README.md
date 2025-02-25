@@ -62,7 +62,9 @@ explicitly define global variables in Rmd notebook and manually run each
 code. Furthermore, the updated code, available via `main.R` has fixed
 some bugs present in the original notebook with function definitions to
 extract nested data more accurately. Detailed instructions are available
-in `instructions.md` file.
+in
+[`instructions.md`](https://github.com/rcds-dssv/foia_data_mining/blob/main/instructions.md)
+file.
 
 ### Data
 
