@@ -356,7 +356,14 @@ parse_yaml <- function(yaml_file) {
   return(output_list)
 }
 
-parse_and_save_foia <- function(yaml_file, output_dir = ".") {
+parse_and_save_foia <- function(yaml_file, method = c("rda", "rds", "none"), output_dir = ".") {
+  if (length(method) != 1) {
+    message("Using default method: rda")
+    method <- "rda"
+  } else if (!(method %in% c("rda", "rds", "none"))) {
+    stop("Invalid method! method should be one of 'rda', 'rds', or 'none'")
+  }
+  
   yaml_data <- parse_yaml(yaml_file)
   
   foia_data <- parse_xml(
@@ -368,5 +375,19 @@ parse_and_save_foia <- function(yaml_file, output_dir = ".") {
     assoc_attrs_org_list = yaml_data$assoc_attrs_org_list
   )
   
-  save(foia_data, file = file.path(output_dir, yaml_data$output_file))
+  outfile <- yaml_data$output_file
+  
+  if (method == "rda") {
+    if (!str_detect(tolower(outfile), ".rda")) {
+      outfile <- str_c(outfile, ".rda")
+    }
+    save(foia_data, file = file.path(output_dir, outfile))
+  } else if (method == "rds") {
+    if (!str_detect(tolower(outfile), ".rds")) {
+      outfile <- str_c(outfile, ".rds")
+    }
+    saveRDS(foia_data, file = file.path(output_dir, outfile))
+  } else {
+    return(foia_data)
+  }
 }
