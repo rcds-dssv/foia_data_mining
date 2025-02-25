@@ -161,7 +161,7 @@ section_values_function <- function(ORG_want,
   
   section_values_year_x <- data.frame()
   
-  for (i in 1:nrow(assoc_want)){
+  for (i in seq_len(nrow(assoc_want))){
     
     # grab head node according to the data reference ID and extract values recursively
     node_section_subset_x <- getNodeSet(
@@ -205,6 +205,16 @@ section_values_function <- function(ORG_want,
     section_values_year_x <- bind_rows(section_values_year_x, section_subunit_values_subset_x)
   }
   
+  # if section_values_year_x is empty, create a new data frame with the
+  # data / organization reference ID columns
+  if (nrow(section_values_year_x) == 0) {
+    section_values_year_x <- section_values_year_x %>%
+      mutate(
+        ComponentDataReference = character(0),
+        OrganizationReference = character(0)
+      )
+  }
+  
   # join the data with the organization and association data
   section_values_year_x <- section_values_year_x %>% 
     left_join(ORG_want, by = "OrganizationReference") %>%
@@ -237,7 +247,7 @@ parse_xml <- function(
   foia_data <- list()
   
   for (i in filenames) {
-    message("Parsing ", i, "...")
+    message("\nParsing ", i, "...")
     
     # Import and parse the XML file so we have a workable R format.
     xml_1 <- xmlParse(file.path(file_dir, i))
@@ -276,8 +286,16 @@ parse_xml <- function(
         )
       
       # Add filename and FY to section_values_data
-      section_values_data$filename <- i
-      section_values_data$FY <- str_extract(i, '[:digit:]+')
+      if (nrow(section_values_data) == 0) {
+        message(str_glue(" - NOTE: No data found for {address} in {i} for specified components."))
+        section_values_data <- bind_rows(
+          section_values_data,
+          data.frame(filename = i, FY = NA)
+        )
+      } else {
+        section_values_data$filename <- i
+        section_values_data$FY <- str_extract(i, '[:digit:]+')
+      }
       
       # Create a unique data frame name based on the section.
       section_data_name <- str_extract(address, 'foia:([^/]+)')
@@ -285,37 +303,11 @@ parse_xml <- function(
       
       # If section_data_name already exists in foia_data and the number
       # of columns match, append to it. Before appending, make sure that the order
-      # of the column names match.
-      if (section_data_name %in% names(foia_data) &
-          length(colnames(section_values_data)) == length(colnames(foia_data[[section_data_name]]))) {
-        col_order <- colnames(foia_data[[section_data_name]])
+      # of the column names match. (bind_rows() takes care of that)
+      if (section_data_name %in% names(foia_data)) {
         
-        section_values_data <- section_values_data[col_order]
-        
-        foia_data[[section_data_name]] <-
-          rbind(foia_data[[section_data_name]], section_values_data)  %>%
-          relocate(ComponentDataReference, OrganizationReference.x, OrganizationAbbreviationText,
-                   OrganizationName, ParentOrganization, values_address, Section, filename, FY,
-                   .after = last_col())
-        
-      } else if (section_data_name %in% names(foia_data) &
-                 length(colnames(section_values_data)) != length(colnames(foia_data[[section_data_name]]))) {
-        # Check for missing columns between data frames and add the missing columns.
-        missing_columns <-
-          dplyr::setdiff(colnames(foia_data[[section_data_name]]),
-                         colnames(section_values_data))
-        for (column in missing_columns) {
-          section_values_data[[column]] <- NA
-        }
-        
-        # Make sure columns are in the same order
-        col_order <- colnames(foia_data[[section_data_name]])
-        
-        section_values_data <- section_values_data[col_order]
-        
-        # Append to foia_data
-        foia_data[[section_data_name]] <-
-          rbind(foia_data[[section_data_name]], section_values_data) %>%
+        foia_data[[section_data_name]] <- foia_data[[section_data_name]] %>%
+          bind_rows(section_values_data)  %>%
           relocate(ComponentDataReference, OrganizationReference.x, OrganizationAbbreviationText,
                    OrganizationName, ParentOrganization, values_address, Section, filename, FY,
                    .after = last_col())
