@@ -91,9 +91,9 @@ and understand the relationship between these keys and the XML data.
 
 ### Running Code
 
-If you have the XML data and YAML file set up, you're ready to run the
+Once you have the XML data and YAML file set up, you're ready to run the
 code for extraction. If you are running in the project environment, all
-the paths are relatively to the location of `foia_data_mining.Rproj`,
+the paths are relative to the location of `foia_data_mining.Rproj`,
 unless you manually changed the working directory via `setwd()`.
 
 Sample code to run the extraction process is available in `data_mine.R`
