@@ -116,8 +116,8 @@ df_assoc_want_function <- function(ORG_want,
 
 ##### NEW recursive code to extract values from the nodes separately
 get_xml_value_recursive <- function(node) {
-  if (xmlSize(node) == 1) {
-    return(xmlValue(node))
+  if (xmlSize(node) == 1 & all(names(xmlChildren(node)) == "text")){
+    return(xmlSApply(node, xmlValue))
   } else if (xmlSize(node) == 0) {
     return(NA)
   } else {
