@@ -28,18 +28,41 @@ frame is the metric of interest.
 To use this code, ensure you have the required R packages installed. The
 essential packages include:
 
-XML
+XML, xml2, tibble, tidyverse, yaml
 
-xml2
+### Option 1
 
-tibble
+The project now supports usage of `renv` to install all relevant
+package. To install necessary packages using this method, you will need
+R Studio. First open the R project environment by clicking on
+`foia_data_mining.Rproj`, which should start R Studio. If the method
+doesn't work, try opening R Studio separately and open the `.Rproj` file
+within R Studio.
 
-tidyverse
+Once inside the project, type in R Console.
 
-The packages can be installed in R using the
+```{renv::restore()}
+```
+
+This will automatically install all packages used for data mining. These
+packages will only be relevant inside the project environment, which
+will not interfere with global packages.
+
+### Option 2
+
+The packages can be installed in R manually using the
 install.packages("package_name") command.
 
 ## Usage
+
+**NOTE:** The code has been updated to support a new and more structured
+way to extract FOIA data from XML files using
+[yaml](https://en.wikipedia.org/wiki/YAML). This eliminates the need to
+explicitly define global variables in Rmd notebook and manually run each
+code. Furthermore, the updated code, available via `main.R` has fixed
+some bugs present in the original notebook with function definitions to
+extract nested data more accurately. Detailed instructions are available
+in `instructions.md` file.
 
 ### Data
 
