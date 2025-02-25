@@ -1,0 +1,105 @@
+---
+title: "data comparison"
+author: "John Lee"
+date: "2025-02-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+```
+
+## Data Comparison
+
+Compare original DHS foia data to newly created one.
+
+The document assumes that the original `DHS_data.Rda` and `DHS_PPR_data.Rda` (which were created using the original data mining functions) are in the `../../code/data/rda/` directory. The new `DHS_data.Rda` is assumed to be in the `../data/` directory.
+
+```{r}
+load("../../code/data/rda/DHS_data.Rda")
+orig_foia <- foia_data
+
+load("../data/DHS_data.Rda")
+new_foia <- foia_data
+
+load("../../code/data/rda/DHS_PPR_data.Rda")
+orig_foia_ppr <- foia_data
+```
+
+### RequestDispositionSection
+
+```{r}
+all.equal(orig_foia$RequestDispositionSection, new_foia$RequestDispositionSection)
+```
+
+### ProcessedRequestSection
+
+Notice that the original data scraped data from non existent ComponentDataReference due to a bug in the code.
+
+```{r eval=FALSE}
+View(orig_foia$ProcessedRequestSection)
+View(new_foia$ProcessedRequestSection)
+```
+
+```{r}
+all.equal(
+  orig_foia$ProcessedRequestSection %>%
+    filter(!if_all(starts_with("Process"), ~ is.na(.x))),
+  new_foia$ProcessedRequestSection %>%
+    filter(FY != 23)
+)
+```
+
+### OldestPendingAppealSection
+
+```{r eval=FALSE}
+View(orig_foia$OldestPendingAppealSection)
+View(new_foia$OldestPendingAppealSection)
+```
+
+The original foia dataset is missing all data
+
+### OldestPendingRequestSection
+
+```{r eval=FALSE}
+View(orig_foia$OldestPendingRequestSection)
+View(new_foia$OldestPendingRequestSection)
+```
+
+Same here
+
+### PendingPerfectedRequestsSection
+
+Important thing to note is that if the data comes from nested nodes, then the node names are separated with a period in the new foia data. This wasn't the case for old foia data.
+
+Columns:
+
+```{r}
+print(colnames(orig_foia_ppr$PendingPerfectedRequestsSection))
+print(colnames(new_foia$PendingPerfectedRequestsSection))
+```
+
+```{r eval=FALSE}
+View(orig_foia_ppr$PendingPerfectedRequestsSection)
+View(new_foia$PendingPerfectedRequestsSection)
+```
+
+```{r}
+tmp <- new_foia$PendingPerfectedRequestsSection %>%
+  filter(FY != 23) %>%
+  # all "_new" to all columns
+  rename_with(~ paste0(.x, "_new")) %>%
+  rename_with(~ str_replace(.x, "ComplexPendingRequestStatistics_", "ComplexPendingRequestStatistics")) %>%
+  rename_with(~ str_replace(.x, "SimplePendingRequestStatistics_", "SimplePendingRequestStatistics")) %>%
+  rename_with(~ str_replace(.x, "ExpeditedPendingRequestStatistics_", "ExpeditedPendingRequestStatistics")) %>%
+  bind_cols(orig_foia_ppr$PendingPerfectedRequestsSection) %>%
+  select(order(colnames(.)))
+
+for (i in 1:(ncol(tmp) / 2)) {
+  print(all.equal(tmp[[(i-1)*2 + 1]], tmp[[i*2]]))
+}
+```
+
+The values across the corresponding columns match exactly.
