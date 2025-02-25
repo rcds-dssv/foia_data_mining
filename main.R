@@ -125,6 +125,34 @@ get_xml_value_recursive <- function(node) {
   }
 }
 
+# helper function to convert extracted xml data to a data frame
+check_all_chr <- function(x) {
+  tmp <- x %>%
+    map_chr(class)
+  return(all((tmp == "character") | (tmp == "logical")))
+}
+
+# this function converts the node subset output to a data frame
+node_subset_to_df <- function(node_subset) {
+  node_subset_ <- node_subset[[1]]
+  i <- 0
+  
+  while (!check_all_chr(node_subset_)) {
+    # cap the number of iterations list_flatten runs to prevent from being
+    # stuch in infinite loop
+    if (i > 10) stop("Error in node_subset_to_df: too many iterations for",
+                     " flattening the list. Please check the data.")
+    
+    node_subset_ <- node_subset_ %>% list_flatten()
+    i <- i + 1
+  }
+  
+  node_subset_ %>%
+    as.data.frame(row.names = NULL)
+  
+}
+
+
 # new implementation of section_values_function
 section_values_function <- function(ORG_want,
                                     assoc_want,
@@ -157,9 +185,7 @@ section_values_function <- function(ORG_want,
       ))
       section_subunit_values_subset_x <- data.frame()
     } else {
-      section_subunit_values_subset_x <- node_section_subset_x %>%
-        `[[`(1) %>%
-        as.data.frame()
+      section_subunit_values_subset_x <- node_subset_to_df(node_section_subset_x)
     }
     
     # sometimes the head node exists doesn't contain any data, resulting in a
@@ -179,11 +205,10 @@ section_values_function <- function(ORG_want,
     section_values_year_x <- bind_rows(section_values_year_x, section_subunit_values_subset_x)
   }
   
-  section_values_year_x <- section_values_year_x %>% left_join(ORG_want,
-                                                               by = "OrganizationReference")
-  
-  section_values_year_x <- section_values_year_x %>% left_join(assoc_want,
-                                                               by = "ComponentDataReference") %>% 
+  # join the data with the organization and association data
+  section_values_year_x <- section_values_year_x %>% 
+    left_join(ORG_want, by = "OrganizationReference") %>%
+    left_join(assoc_want, by = "ComponentDataReference") %>%
     select(-ends_with(".y"))
   
   if ("t.extract_section_subunit_subset_x." %in% colnames(section_values_year_x)) {
@@ -268,7 +293,10 @@ parse_xml <- function(
         section_values_data <- section_values_data[col_order]
         
         foia_data[[section_data_name]] <-
-          rbind(foia_data[[section_data_name]], section_values_data)
+          rbind(foia_data[[section_data_name]], section_values_data)  %>%
+          relocate(ComponentDataReference, OrganizationReference.x, OrganizationAbbreviationText,
+                   OrganizationName, ParentOrganization, values_address, Section, filename, FY,
+                   .after = last_col())
         
       } else if (section_data_name %in% names(foia_data) &
                  length(colnames(section_values_data)) != length(colnames(foia_data[[section_data_name]]))) {
@@ -287,11 +315,17 @@ parse_xml <- function(
         
         # Append to foia_data
         foia_data[[section_data_name]] <-
-          rbind(foia_data[[section_data_name]], section_values_data)
+          rbind(foia_data[[section_data_name]], section_values_data) %>%
+          relocate(ComponentDataReference, OrganizationReference.x, OrganizationAbbreviationText,
+                   OrganizationName, ParentOrganization, values_address, Section, filename, FY,
+                   .after = last_col())
         
       } else {
         # If section_data_name doesn't exist, create a new entry in the list
-        foia_data[[section_data_name]] <- section_values_data
+        foia_data[[section_data_name]] <- section_values_data %>%
+          relocate(ComponentDataReference, OrganizationReference.x, OrganizationAbbreviationText,
+                   OrganizationName, ParentOrganization, values_address, Section, filename, FY,
+                   .after = last_col())
       }
     } # To access the data in a section you can use foia_data$SectionName (e.g.,
   }   # foia_data$RequestDisposition) or foia_data[["SectionName"]].
