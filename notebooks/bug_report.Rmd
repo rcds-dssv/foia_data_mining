@@ -957,3 +957,5 @@ The following document showed bugs related to concatenated values, wrong node na
 3. Update nodes
   - `"/iepd:FoiaAnnualReport/foia:OldestPendingAppealSection/foia:OldestPendingTimes"` -> `"/iepd:FoiaAnnualReport/foia:OldestPendingAppealSection/foia:OldestPendingItems"`
   - `"/iepd:FoiaAnnualReport/foia:OldestPendingRequestSection/foia:OldestPendingItems/foia:OldItem/foia:OldItemPendingDaysQuantity"` -> `"/iepd:FoiaAnnualReport/foia:OldestPendingRequestSection/foia:OldestPendingItems"`
+
+**NOTE:** This document sketches the rough outline of the new data extraction method. The code has been updated since to fix some bugs.

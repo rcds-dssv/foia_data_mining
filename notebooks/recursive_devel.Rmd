@@ -1,0 +1,138 @@
+---
+title: "recursive devel"
+author: "John Lee"
+date: "2025-02-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(yaml)
+library(tidyverse)
+library(XML)
+library(xml2)
+library(tibble)
+
+file_dir <- "../FOIA Sample"
+```
+
+```{r}
+get_xml_value_recursive <- function(node) {
+  if (xmlSize(node) == 1 & all(names(xmlChildren(node)) == "text")){
+    return(xmlSApply(node, xmlValue))
+  } else if (xmlSize(node) == 0) {
+    return(NA)
+  } else {
+    return(xmlApply(node, get_xml_value_recursive))
+  }
+}
+```
+
+Create some test cases to use for the recursive function
+
+```{r}
+test_cases <- list(
+  list(
+    case = "1",
+    filename = "DHS_fy10.xml",
+    path = "/iepd:FoiaAnnualReport/foia:OldestPendingConsultationSection/foia:OldestPendingItems[@s:id=\"OPC22\"]"
+  ),
+  list(
+    case = "2", 
+    filename = "DHS_fy10.xml",
+    path = "/iepd:FoiaAnnualReport/foia:OldestPendingConsultationSection/foia:OldestPendingItems[@s:id=\"OPC8\"]"
+  ),
+  list(
+    case = "3",
+    filename = "DHS_fy10.xml",
+    path = "/iepd:FoiaAnnualReport/foia:AppealDenialOtherReasonSection/foia:ComponentOtherDenialReason[@s:id=\"ADOR29\"]"
+  ),
+  list(
+    case = "4", 
+    filename = "DHS_fy10.xml",
+    path = "/iepd:FoiaAnnualReport/foia:PendingPerfectedRequestsSection/foia:PendingPerfectedRequests[1]"
+  ),
+  list(
+    case = "5",
+    filename = "DHS_fy10.xml",
+    path = "/iepd:FoiaAnnualReport/foia:PendingPerfectedRequestsSection/foia:PendingPerfectedRequests[2]"
+  ),
+  list(
+    case = "6",
+    filename = "DHS_fy10.xml",
+    path = "/iepd:FoiaAnnualReport/foia:OldestPendingAppealSection/foia:OldestPendingItems[1]"
+  ),
+  list(
+    filename = "DHS_fy10.xml",
+    path = "/iepd:FoiaAnnualReport/foia:ProcessedResponseTimeSection/foia:ProcessedResponseTime[@s:id ='PRT1']"
+  )
+)
+```
+
+```{r}
+i <- 7
+{
+  xml_1 <- xmlParse(file.path(file_dir, test_cases[[i]]$filename))
+  xml_top_node <- xmlRoot(xml_1)
+  
+  node_section_subset_x <- getNodeSet(
+      xml_top_node,
+      test_cases[[i]]$path,
+      fun = get_xml_value_recursive)
+  
+  node_section_subset_x
+}
+```
+
+Old way to convert to data frame. This method is problematic for case 4 and 5. If there is only nested element in a node, then the resulting column name only extracts the inntermost name.
+
+```{r}
+node_section_subset_x %>%
+        `[[`(1) %>%
+        as.data.frame(row.names = NULL)
+```
+
+New way to convert to data frame
+
+```{r}
+check_all_chr <- function(x) {
+  tmp <- x %>%
+    map_chr(class)
+  return(all((tmp == "character") | (tmp == "logical")))
+}
+
+node_section_subset_x_ <- node_section_subset_x[[1]]
+
+while (!check_all_chr(node_section_subset_x_)) {
+  node_section_subset_x_ <- node_section_subset_x_ %>% list_flatten()
+}
+
+node_section_subset_x_ %>%
+  as.data.frame(row.names = NULL)
+```
+
+
+Grab node
+
+```{r}
+i <- 1
+mynode <- getNodeSet(
+  xml_top_node,
+  test_cases[[i]]$path
+)[[1]]
+
+mynode
+mynode[[1]]
+xmlSize(mynode[[1]])
+
+names(xmlChildren(mynode))
+names(xmlChildren(mynode[[1]]))
+names(xmlChildren(mynode[[1]][[1]]))
+
+# get number of descendants
+```
+```{r}
+
+```
+
