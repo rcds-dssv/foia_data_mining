@@ -8,28 +8,47 @@ ORG_want_function <- function(xml_top_node,
                               xml_parsed,
                               subunit_want) {
   
+  # get the agency name
   this_ORG_x <- xmlValue(
     getNodeSet(xml_top_node,
     "/iepd:FoiaAnnualReport/nc:Organization/nc:OrganizationAbbreviationText"))
   
-  # this_year_x <- xmlValue(getNodeSet(xml_top_node,
-  #                    "/iepd:FoiaAnnualReport/foia:DocumentFiscalYearDate"))
+  # extract nodes that contain component information (has abbreviation,
+  # name)
+  df_ORG_x <- getNodeSet(
+    xml_top_node, 
+    "/iepd:FoiaAnnualReport/nc:Organization/nc:OrganizationSubUnit") %>%
+    xmlToDataFrame(nodes = ., stringsAsFactors = FALSE) %>%
+    mutate(ParentOrganization = this_ORG_x)
+
+  # get subcomponent reference ID
+  if (nrow(df_ORG_x) != 0) {
+    df_ORG_x$OrganizationReference <- xpathSApply(
+      xml_parsed, 
+      "/iepd:FoiaAnnualReport/nc:Organization/nc:OrganizationSubUnit/@s:id")
+  }
+
+  # above extraction ignores "ORG0", which is the agency.
+  # some agencies specify itself as subcomponent so this needs to be
+  # extracted separately
+  df_ORG_agency <- getNodeSet(
+    xml_top_node, 
+    "/iepd:FoiaAnnualReport/nc:Organization") %>%
+    xmlToDataFrame(nodes = ., stringsAsFactors = FALSE) %>%
+    select(OrganizationAbbreviationText, OrganizationName) %>%
+    mutate(ParentOrganization = this_ORG_x)
   
-  nodes_ORG_x <- getNodeSet(
-    xml_top_node, "/iepd:FoiaAnnualReport/nc:Organization/nc:OrganizationSubUnit")
+  # get subcomponent reference ID
+  if (nrow(df_ORG_agency) != 0) {
+    df_ORG_agency$OrganizationReference <- xpathSApply(
+      xml_parsed, 
+      "/iepd:FoiaAnnualReport/nc:Organization/@s:id")
+  }
   
-  df_ORG_x <- xmlToDataFrame(nodes = nodes_ORG_x, stringsAsFactors = FALSE)
-  
-  df_ORG_x$ParentOrganization <- this_ORG_x
-  
-  # df_ORG_x$FY <- this_year_x
-  
-  ORG_attrs_x <- xpathSApply(
-    xml_parsed, 
-    "/iepd:FoiaAnnualReport/nc:Organization/nc:OrganizationSubUnit/@s:id")
-  
-  df_ORG_x$OrganizationReference <- ORG_attrs_x
-  
+  df_ORG_x <- rbind(
+    df_ORG_agency,
+    df_ORG_x
+  )
   df_ORG_want_x <- filter(df_ORG_x, OrganizationAbbreviationText %in% subunit_want)
   
   return(df_ORG_want_x)
@@ -368,14 +387,14 @@ parse_and_save_foia <- function(yaml_file, method = c("rda", "rds", "none"), out
   )
   
   outfile <- yaml_data$output_file
-  
+
   if (method == "rda") {
-    if (!str_detect(tolower(outfile), ".rda")) {
+    if (!str_detect(tolower(outfile), ".rda$")) {
       outfile <- str_c(outfile, ".rda")
     }
     save(foia_data, file = file.path(output_dir, outfile))
   } else if (method == "rds") {
-    if (!str_detect(tolower(outfile), ".rds")) {
+    if (!str_detect(tolower(outfile), ".rds$")) {
       outfile <- str_c(outfile, ".rds")
     }
     saveRDS(foia_data, file = file.path(output_dir, outfile))

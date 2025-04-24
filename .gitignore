@@ -4,5 +4,7 @@
 .Ruserdata
 
 FOIA Sample/
-data/
-yaml/
+data/yaml/*
+data/rds/*
+data/xml/*
+comparisons/
