@@ -116,3 +116,39 @@ The `parse_and_save_foia()` function takes an additional argument,
 `method`, which can be one of `"rda"`, `"rds"`, or `"none"`. By default
 it is set to `rda`, but saving the data as `rds` is preferred as this
 allows calling the data to a preferred variable name.
+
+### Example Directory Setup
+
+Following tree shows a possible directory structure for extracting the foia data
+from the xml files.
+
+Inside the `data/` directory, there are 3 directories. `data/rds` saves the
+output of the data mining script. The files in this directory can be copied over
+for use in the dashboard. `data/xml` houses directories containing a collection
+of xml files for the corresponding agency. Finally, `data/yaml` keeps the yaml
+files that defines how data is extracted.
+
+For simplicity you can keep the `data_mine.R` script in the project directory
+and write commands as described above to extract data.
+
+```
+project_directory
+|-- foia_data_mining.Rproj
+|-- main.R
+|-- data_mine.R
+|-- data
+|   |-- rds
+|   |   |-- DHS_data.rds
+|   |   |-- DOJ_data.rds
+|   |   |-- ...
+|   |-- xml
+|   |   |-- DHS_xmls
+|   |   |   |-- DHS_fy19.xml
+|   |   |   |-- DHS_fy20.xml
+|   |   |   |-- ...
+|   |   |-- ...
+|   |-- yaml
+|   |   |-- DHS.yaml
+|   |   |-- DOJ.yaml
+|   |   |-- ...
+```
