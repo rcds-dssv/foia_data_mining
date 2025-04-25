@@ -58,8 +58,8 @@ contain the following keys:
 Example of a yaml file for extracting DHS (truncated):
 
 ``` yaml
-xml_directory: "../FOIAdashboard/DHS_xmls"
-output_file: "data/DHS_data"
+xml_directory: "data/xml/DHS_xmls"
+output_file: "data/rds/DHS_data"
 components: ["CBP", "PRIV", "USCIS", "ICE", "OIG", "CRCL"]
 tables:
 - values_address: "/iepd:FoiaAnnualReport/foia:RequestDispositionSection/foia:RequestDisposition"
