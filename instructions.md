@@ -34,14 +34,14 @@ contain `DHS_fy13.xml`, `DHS_fy14.xml`, ..., `DHS_fy19.xml`,
 #### YAML File
 
 The `YAML` file contains configuration for the data extraction process.
-The file is structured in a `key: value` format.
+The file is structured in a `key: value` format. Example is showns below.
 
 The `YAML` file should contain the following keys:
 
 | Key | Explanation |
 |---------------------------------|---------------------------------------|
 | `xml_directory` | Path to directory with XML files |
-| `output_file` | Name of the file that the final output is saved to |
+| `output_file` | Name of the file containing the output |
 | `components` | A list of sub-agencies of interest, abbreviated |
 | `tables` | List of `key: value` pairs that defines data to be extracted. More detail below |
 
@@ -55,7 +55,7 @@ contain the following keys:
 | `assoc_attrs_val` | XPath that evaluates to extracting the data ID for corresponding `assoc_address` |
 | `assoc_attrs_org` | XPath that evaluates to extracting the component ID for corresponding `assoc_address` |
 
-Example of a yaml file for extracting DHS looks like (truncated):
+Example of a yaml file for extracting DHS (truncated):
 
 ``` yaml
 xml_directory: "../FOIAdashboard/DHS_xmls"
@@ -91,9 +91,9 @@ and understand the relationship between these keys and the XML data.
 
 ### Running Code
 
-If you have the XML data and YAML file set up, you're ready to run the
+Once you have the XML data and YAML file set up, you're ready to run the
 code for extraction. If you are running in the project environment, all
-the paths are relatively to the location of `foia_data_mining.Rproj`,
+the paths are relative to the location of `foia_data_mining.Rproj`,
 unless you manually changed the working directory via `setwd()`.
 
 Sample code to run the extraction process is available in `data_mine.R`
