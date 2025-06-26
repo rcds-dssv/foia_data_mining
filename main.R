@@ -68,8 +68,8 @@ df_assoc_want_function <- function(ORG_want,
     df_assoc_sub_x <- xmlToDataFrame(nodes = node_assoc_sub_x, stringsAsFactors = FALSE)
     assoc_attrs_val_sub_x <- xpathSApply(xml_parsed, assoc_attrs_vals[i])
     assoc_attrs_org_sub_x <- xpathSApply(xml_parsed, assoc_attrs_orgs[i])
-    df_assoc_sub_x[ , 1] <-  assoc_attrs_val_sub_x
-    df_assoc_sub_x[ , 2] <- assoc_attrs_org_sub_x
+    df_assoc_sub_x[!is.na(df_assoc_sub_x[ , 1]) , 1] <-  assoc_attrs_val_sub_x
+    df_assoc_sub_x[!is.na(df_assoc_sub_x[ , 2]) , 2] <- assoc_attrs_org_sub_x
     df_assoc_sub_x$values_address <- values_addresses[i]
     
     df_assoc_x <- bind_rows(df_assoc_x, df_assoc_sub_x)
